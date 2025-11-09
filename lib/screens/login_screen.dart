@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'home_screen.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -66,6 +67,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Success message
       _showMessage('Connexion réussie! Bienvenue de retour!', Colors.green);
+      //navigate to homescreen after login
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+          );
+        }
+      });
 
       // Clear all input fields after successful login
       _emailController.clear();

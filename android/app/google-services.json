@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "66446307385",
+    "project_id": "campis-462e5",
+    "storage_bucket": "campis-462e5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:66446307385:android:91d23c7dc1443076cf9de8",
+        "android_client_info": {
+          "package_name": "com.project.campus_connect"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBtEknk0kXS2uLS5Y8PWio8W-n7KtnkQTs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:66446307385:android:de1cf95ad2adc11fcf9de8",
+        "android_client_info": {
+          "package_name": "com.project.cc"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBtEknk0kXS2uLS5Y8PWio8W-n7KtnkQTs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
