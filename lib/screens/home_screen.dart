@@ -1,11 +1,72 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
+import 'dart:io';
 import '../models/publication.dart';
 import 'create_publication_screen.dart';
 import 'events_screen.dart';
 import 'documents_screen.dart';
 import 'profile_screen.dart';
+
+class DownloadService {
+  static Future<void> downloadFile(String url, String fileName, BuildContext context) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Téléchargement en cours...')),
+      );
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        // Get downloads directory
+        final directory = await getExternalStorageDirectory();
+
+        if (directory == null) {
+          throw Exception('Could not access storage directory');
+        }
+
+        // Create CampusConnect folder
+        final campusConnectDir = Directory('${directory.path}/CampusConnect');
+        if (!await campusConnectDir.exists()) {
+          await campusConnectDir.create(recursive: true);
+        }
+
+        final filePath = '${campusConnectDir.path}/$fileName';
+        final file = File(filePath);
+
+        // Save the file
+        await file.writeAsBytes(response.bodyBytes);
+
+        // Try to open the file
+        await OpenFile.open(filePath);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Fichier téléchargé avec succès!'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+
+      } else {
+        throw Exception('HTTP Error: ${response.statusCode}');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur: ${e.toString()}'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  static Future<void> downloadImage(String imageUrl, String fileName, BuildContext context) async {
+    await downloadFile(imageUrl, fileName, context);
+  }
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,11 +79,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  int _selectedIndex = 0; // To track the selected tab
+  int _selectedIndex = 0;
 
-  // List of the screens to navigate to
   static final List<Widget> _widgetOptions = <Widget>[
-    const PublicationsList(), // Extracted the main content into its own widget
+    const PublicationsList(),
     const EventsScreen(),
     const DocumentsScreen(),
     const ProfileScreen(),
@@ -34,18 +94,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _logout() async {
-    await _auth.signOut();
-    // You should also navigate to the login screen after logout
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _selectedIndex == 0
           ? AppBar(
-        scrolledUnderElevation: 0.0, // Prevents color change on scroll
+        scrolledUnderElevation: 0.0,
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
@@ -74,18 +129,14 @@ class _HomeScreenState extends State<HomeScreen> {
             iconSize: 24,
             icon: const Icon(
               Icons.add,
-              color: Color(0xFF1A1A1A), // Icon color from your CSS
+              color: Color(0xFF1A1A1A),
             ),
             onPressed: () {
-              // --- CORRECTION: Re-enabled navigation ---
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (context) => const CreatePublicationScreen()),
               );
             },
             tooltip: 'Créer une publication',
-            hoverColor: Colors.transparent,
-            splashColor: Colors.grey.withOpacity(0.2),
-            highlightColor: Colors.grey.withOpacity(0.1),
           ),
           const SizedBox(width: 16),
         ],
@@ -101,27 +152,6 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Center(
         child: _widgetOptions.elementAt(_selectedIndex),
       ),
-      // --- START: NEW FLOATING ACTION BUTTON ---
-      // This button is only shown on the home screen (index 0)
-      floatingActionButton: _selectedIndex == 0
-          ? FloatingActionButton(
-        onPressed: () {
-          // TODO: Define the action for this button, e.g.,
-          print("Floating Action Button Pressed!");
-        },
-        backgroundColor: const Color(0xFF2590F4), // background from CSS
-        elevation: 4.0, // A subtle shadow
-        hoverColor: const Color(0xFF095DAC), // hover color from CSS
-        splashColor: const Color(0xFF074885), // pressed color from CSS
-        shape: const CircleBorder(), // border-radius: 9999px from CSS
-        child: const Icon(
-          Icons.add, // Example icon, change as needed
-          color: Colors.white, // color from CSS
-          size: 24.0, // icon size from CSS
-        ),
-      )
-          : null,
-      // --- END: NEW FLOATING ACTION BUTTON ---
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           border: Border(
@@ -247,7 +277,6 @@ class PublicationsList extends StatelessWidget {
   }
 
   Widget _buildPublicationCard(Publication publication, BuildContext context) {
-    // Check if the file is an image based on file extension
     bool isImageFile(String? fileName) {
       if (fileName == null) return false;
       final imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
@@ -255,7 +284,6 @@ class PublicationsList extends StatelessWidget {
       return imageExtensions.any((ext) => lowerFileName.endsWith(ext));
     }
 
-    // Function to show image in full screen
     void _showFullScreenImage(String imageUrl, String fileName) {
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -353,7 +381,7 @@ class PublicationsList extends StatelessWidget {
                 ],
               ),
 
-            // Image display (if file is an image)
+            // Image display
             if (publication.fileUrl != null && publication.fileName != null && isImageFile(publication.fileName))
               Column(
                 children: [
@@ -407,7 +435,7 @@ class PublicationsList extends StatelessWidget {
                 ],
               ),
 
-            // Document file attachment (if file is NOT an image)
+            // Document file attachment
             if (publication.fileUrl != null && publication.fileName != null && !isImageFile(publication.fileName))
               Column(
                 children: [
@@ -423,7 +451,6 @@ class PublicationsList extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        // File type icon
                         Container(
                           width: 40,
                           height: 40,
@@ -438,7 +465,6 @@ class PublicationsList extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        // File info
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -466,9 +492,12 @@ class PublicationsList extends StatelessWidget {
                         ),
                         IconButton(
                           icon: const Icon(Icons.download, color: Colors.blue),
-                          onPressed: () {
-                            // TODO: Implement file download
-                            print('Download file: ${publication.fileUrl}');
+                          onPressed: () async {
+                            await DownloadService.downloadFile(
+                                publication.fileUrl!,
+                                publication.fileName!,
+                                context
+                            );
                           },
                         ),
                       ],
@@ -490,7 +519,6 @@ class PublicationsList extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  // Like count
                   Row(
                     children: [
                       Icon(
@@ -510,7 +538,6 @@ class PublicationsList extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(width: 20),
-                  // Comment count
                   Row(
                     children: [
                       Icon(
@@ -530,7 +557,6 @@ class PublicationsList extends StatelessWidget {
                     ],
                   ),
                   const Spacer(),
-                  // Share icon
                   Icon(
                     Icons.share,
                     color: Colors.grey[600],
@@ -613,14 +639,8 @@ class FullScreenImage extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.download),
-            onPressed: () {
-              // TODO: Implement download
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: () {
-              // TODO: Implement share
+            onPressed: () async {
+              await DownloadService.downloadImage(imageUrl, fileName, context);
             },
           ),
         ],

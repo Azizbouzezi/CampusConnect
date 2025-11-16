@@ -44,11 +44,14 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
     try {
       String? fileUrl;
       String? fileName;
+      double? fileSize;
 
       // Upload file to Supabase if exists
       if (_selectedFile != null) {
         fileName = _fileName;
-        fileUrl = await StorageService.uploadFile(_selectedFile!, _fileName!, user.uid);
+        final uploadResult = await StorageService.uploadFile(_selectedFile!, _fileName!, user.uid);
+        fileUrl = uploadResult['fileUrl'];
+        fileSize = uploadResult['fileSize']; // Get the file size from upload result
       }
 
       // Store publication in Firestore
@@ -59,6 +62,7 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
         'timestamp': FieldValue.serverTimestamp(),
         'fileUrl': fileUrl,
         'fileName': fileName,
+        'fileSize': fileSize, // Store the file size
         'likes': 0,
         'comments': 0,
         'likedBy': [],
