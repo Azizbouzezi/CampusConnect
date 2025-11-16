@@ -84,6 +84,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       if (querySnapshot.docs.isNotEmpty) {
         _showMessage('Cet email est déjà utilisé', Colors.orange);
+        // Important: stop loading and exit if email exists
+        setState(() { _isLoading = false; });
         return;
       }
 
@@ -93,6 +95,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
+
+      // --- START OF THE FIX ---
+      // After creating the user, update their Auth profile with the name.
+      // This is the permanent fix for the "Utilisateur Anonyme" problem.
+      if (userCredential.user != null) {
+        await userCredential.user!.updateDisplayName(_fullNameController.text.trim());
+        await userCredential.user!.reload(); // Reload user to get the updated info
+      }
+      // --- END OF THE FIX ---
 
       // Store additional user data in Firestore
       await FirebaseFirestore.instance
@@ -129,10 +140,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _showMessage('Erreur inattendue: $e', Colors.red);
     } finally {
       if(mounted){
-      setState(() {
-        _isLoading = false;
-      });
-    }}
+        setState(() {
+          _isLoading = false;
+        });
+      }}
   }
 
   @override
@@ -170,7 +181,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
                             color: Colors.blue[100],
-                            child: const Icon(Icons.school, size: 60, color: Colors.blue), // Also made icon bigger
+                            child: const Icon(Icons.school, size: 60, color: Colors.blue),
                           );
                         },
                       ),
