@@ -1,3 +1,4 @@
+// services/storage_service.dart
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 
@@ -37,6 +38,29 @@ class StorageService {
     } catch (e) {
       print('Detailed upload error: $e');
       throw Exception('Error uploading file: $e');
+    }
+  }
+
+  static Future<String> uploadProfileImage(File imageFile, String userId) async {
+    try {
+      final fileName = 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final filePath = 'users/$userId/profile/$fileName';
+
+      // Upload to Supabase
+      await client.storage
+          .from('campus-connect-files')
+          .uploadBinary(filePath, await imageFile.readAsBytes());
+
+      // Get public URL
+      final String publicUrl = client.storage
+          .from('campus-connect-files')
+          .getPublicUrl(filePath);
+
+      print('Profile image uploaded successfully: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      print('Error uploading profile image: $e');
+      throw Exception('Error uploading profile image: $e');
     }
   }
 

@@ -1,7 +1,12 @@
+// screens/profile_screen.dart
+import 'package:cc/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/publication.dart'; // Make sure you have this model
+import '../models/publication.dart';
+import '../models/user_model.dart';
+import '../services/user_service.dart';
+import 'edit_profile_screen.dart';
 
 // Main Profile Screen Widget
 class ProfileScreen extends StatefulWidget {
@@ -14,6 +19,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final UserService _userService = UserService();
 
   @override
   Widget build(BuildContext context) {
@@ -59,15 +65,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 title: const Text('Modifier le profil'),
                 onTap: () {
                   Navigator.pop(context);
-                  // TODO: Implement edit profile
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const EditProfileScreen(),
+                    ),
+                  );
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.logout),
                 title: const Text('Déconnexion'),
                 onTap: () {
-                  Navigator.pop(context);
-                  _signOut(context);
+                  Navigator.pop(context); // Close the bottom sheet first
+                  _signOut(context); // Then sign out and navigate
                 },
               ),
             ],
@@ -80,7 +90,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _signOut(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();
-      // If you have a login screen, you can navigate to it here
+      // Navigate to SignIn screen and remove all previous routes
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()), // Make sure to use SignInScreen, not SignUpScreen
+            (Route<dynamic> route) => false, // This removes all previous routes
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erreur lors de la déconnexion: $e')),
@@ -90,152 +104,177 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Builds the main scrolling view of the profile
   Widget buildProfileView() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const SizedBox(height: 20),
-          // Profile Avatar
-          CircleAvatar(
-            radius: 50,
-            backgroundColor: const Color(0xFF6A1B9A),
-            child: currentUser!.photoURL != null
-                ? ClipOval(
-              child: Image.network(
-                currentUser!.photoURL!,
-                width: 100,
-                height: 100,
-                fit: BoxFit.cover,
-              ),
-            )
-                : const Icon(
-              Icons.person,
-              size: 60,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 16),
-          // User Name
-          Text(
-            currentUser!.displayName?.toUpperCase() ?? currentUser!.email?.split('@').first.toUpperCase() ?? 'UTILISATEUR',
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 4),
-          // User's Email
-          Text(
-            currentUser!.email ?? 'Email non disponible',
-            style: const TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 8),
-          // User Stats
-          StreamBuilder<QuerySnapshot>(
-            stream: _firestore
-                .collection('publications')
-                .where('authorId', isEqualTo: currentUser!.uid)
-                .snapshots(),
-            builder: (context, snapshot) {
-              int publicationCount = 0;
-              int totalLikes = 0;
+    return StreamBuilder<AppUser>(
+      stream: _userService.getCurrentUser(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-              if (snapshot.hasData) {
-                publicationCount = snapshot.data!.docs.length;
-                for (final doc in snapshot.data!.docs) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  totalLikes += (data['likes'] ?? 0) as int;
-                }
-              }
+        if (!snapshot.hasData) {
+          return const Center(child: Text("Erreur de chargement du profil."));
+        }
 
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildStatItem(publicationCount.toString(), 'Publications'),
-                  const SizedBox(width: 20),
-                  _buildStatItem(totalLikes.toString(), 'J\'aime'),
-                  const SizedBox(width: 20),
-                  _buildStatItem('0', 'Abonnés'), // You can implement followers later
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 20),
-          // Bio Section
-          const Text(
-            'Passionné(e) par l\'apprentissage automatique et l\'éthique de l\'IA. Cherche à collaborer sur des projets innovants et à partager mes connaissances avec la communauté Campus Connect.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 15,
-              color: Colors.black54,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Action Buttons
-          Row(
+        final user = snapshot.data!;
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // "Modifier le profil" Button
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    // TODO: Implement edit profile
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2590F4),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: const Text('Modifier le profil', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              // Profile Avatar
+              CircleAvatar(
+                radius: 50,
+                backgroundColor: const Color(0xFF6A1B9A),
+                backgroundImage: user.photoURL != null
+                    ? NetworkImage(user.photoURL!)
+                    : null,
+                child: user.photoURL == null
+                    ? const Icon(
+                  Icons.person,
+                  size: 60,
+                  color: Colors.white,
+                )
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              // User Name
+              Text(
+                user.displayName?.toUpperCase() ?? user.email.split('@').first.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
                 ),
               ),
-              const SizedBox(width: 16),
-              // "Partager" Button
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    // TODO: Implement share profile
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey.shade700,
-                    side: BorderSide(color: Colors.grey.shade300),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: const Text('Partager', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              // User's Email and Major
+              Text(
+                user.email,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey,
                 ),
               ),
+              if (user.major != null && user.major!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  user.major!,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              // User Stats
+              StreamBuilder<QuerySnapshot>(
+                stream: _firestore
+                    .collection('publications')
+                    .where('authorId', isEqualTo: currentUser!.uid)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  int publicationCount = 0;
+                  int totalLikes = 0;
+
+                  if (snapshot.hasData) {
+                    publicationCount = snapshot.data!.docs.length;
+                    for (final doc in snapshot.data!.docs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      totalLikes += (data['likes'] ?? 0) as int;
+                    }
+                  }
+
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildStatItem(publicationCount.toString(), 'Publications'),
+                      const SizedBox(width: 20),
+                      _buildStatItem(totalLikes.toString(), 'J\'aime'),
+                      const SizedBox(width: 20),
+                      _buildStatItem('0', 'Abonnés'), // You can implement followers later
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              // Bio Section
+              Text(
+                user.bio ?? '',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: Colors.black54,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Action Buttons
+              Row(
+                children: [
+                  // "Modifier le profil" Button
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const EditProfileScreen(),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2590F4),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Modifier le profil', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // "Partager" Button
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        // TODO: Implement share profile
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.grey.shade700,
+                        side: BorderSide(color: Colors.grey.shade300),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Partager', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+              // "Mes Publications" Header
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Mes Publications',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // User's Publications List
+              _buildUserPublications(),
+              const SizedBox(height: 20),
             ],
           ),
-          const SizedBox(height: 32),
-          // "Mes Publications" Header
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Mes Publications',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // User's Publications List
-          _buildUserPublications(),
-          const SizedBox(height: 20),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -262,14 +301,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // Build the list of user's publications
-  // Build the list of user's publications
   Widget _buildUserPublications() {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore
           .collection('publications')
           .where('authorId', isEqualTo: currentUser!.uid)
-      // Remove this line temporarily until index is created:
-      // .orderBy('timestamp', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {

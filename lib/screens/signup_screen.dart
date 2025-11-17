@@ -103,19 +103,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
         await userCredential.user!.updateDisplayName(_fullNameController.text.trim());
         await userCredential.user!.reload(); // Reload user to get the updated info
       }
-      // --- END OF THE FIX ---
 
-      // Store additional user data in Firestore
+      // CREATE USER DOCUMENT IN FIRESTORE WITH THE CORRECT STRUCTURE
       await FirebaseFirestore.instance
           .collection('users')
           .doc(userCredential.user!.uid)
           .set({
-        'fullName': _fullNameController.text.trim(),
         'email': _emailController.text.trim(),
+        'displayName': _fullNameController.text.trim(), // Use displayName instead of fullName
+        'photoURL': null,
+        'bio': null,
+        'major': null,
         'createdAt': FieldValue.serverTimestamp(),
+        // Keep your existing fields for backward compatibility
+        'fullName': _fullNameController.text.trim(),
         'userId': userCredential.user!.uid,
         'userType': 'student',
       });
+      // --- END OF THE FIX ---
 
       // Success message
       _showMessage('Compte créé avec succès! Bienvenue sur Campus Connect!', Colors.green);
@@ -123,6 +128,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
       // Clear all input fields after successful signup
       _clearInputs();
 
+      // Navigate to home screen after successful signup
+      Future.delayed(const Duration(milliseconds: 2000), () {
+        if (mounted) {
+          // You might want to navigate to your home screen here
+          // Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+        }
+      });
 
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'Une erreur est survenue';
