@@ -83,15 +83,15 @@ class StorageService {
   }
 
   // Method to delete file (optional - for future use)
-  static Future<void> deleteFile(String filePath) async {
-    try {
-      await client.storage
-          .from('campus-connect-files')
-          .remove([filePath]);
-      print('File deleted successfully: $filePath');
-    } catch (e) {
-      print('Error deleting file: $e');
-      throw Exception('Error deleting file: $e');
-    }
-  }
+ // static Future<void> deleteFile(String filePath) async {
+  //  try {
+    //  await client.storage
+      //    .from('campus-connect-files')
+        //  .remove([filePath]);
+     // print('File deleted successfully: $filePath');
+   // } catch (e) {
+    //  print('Error deleting file: $e');
+     // throw Exception('Error deleting file: $e');
+   // }
+ // }
 }
