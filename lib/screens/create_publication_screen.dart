@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/storage_service.dart';
+import '../services/toxicity_service.dart';
 
 class CreatePublicationScreen extends StatefulWidget {
   const CreatePublicationScreen({super.key});
@@ -18,25 +19,47 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
   final _textController = TextEditingController();
   final int _maxLength = 500;
   bool _isLoading = false;
+  bool _isCheckingToxicity = false;
   File? _selectedFile;
   String? _fileName;
 
   Future<void> _publish() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Vous devez être connecté.")),
-      );
+      _showSnackBar("Vous devez être connecté.");
       return;
     }
 
     if (_textController.text.isEmpty && _selectedFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Veuillez ajouter du contenu ou un fichier.")),
-      );
+      _showSnackBar("Veuillez ajouter du contenu ou un fichier.");
       return;
     }
 
+    // 🔍 AI CONTENT MODERATION
+    if (_textController.text.isNotEmpty) {
+      setState(() {
+        _isCheckingToxicity = true;
+      });
+
+      try {
+        bool isToxic = await ToxicityService.isTextToxic(_textController.text);
+
+        if (isToxic) {
+          _showToxicContentDialog();
+          return; // Stop publication
+        }
+      } catch (e) {
+        print('❌ Moderation error: $e');
+        _showSnackBar("System error. Publication allowed by default.");
+        // Continue on error (fail-safe)
+      } finally {
+        setState(() {
+          _isCheckingToxicity = false;
+        });
+      }
+    }
+
+    // ✅ CONTENT IS APPROVED
     setState(() {
       _isLoading = true;
     });
@@ -46,39 +69,38 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
       String? fileName;
       double? fileSize;
 
-      // Upload file to Supabase if exists
+      // Upload file if exists
       if (_selectedFile != null) {
         fileName = _fileName;
-        final uploadResult = await StorageService.uploadFile(_selectedFile!, _fileName!, user.uid);
+        final uploadResult = await StorageService.uploadFile(
+            _selectedFile!, _fileName!, user.uid);
         fileUrl = uploadResult['fileUrl'];
-        fileSize = uploadResult['fileSize']; // Get the file size from upload result
+        fileSize = uploadResult['fileSize'];
       }
 
-      // Store publication in Firestore
+      // Save to Firestore
       await FirebaseFirestore.instance.collection('publications').add({
         'authorId': user.uid,
-        'authorName': user.displayName ?? 'Utilisateur Anonyme',
+        'authorName': user.displayName ?? 'Utilisateur Anonyme', // Your original naming
         'content': _textController.text,
         'timestamp': FieldValue.serverTimestamp(),
         'fileUrl': fileUrl,
         'fileName': fileName,
-        'fileSize': fileSize, // Store the file size
+        'fileSize': fileSize,
         'likes': 0,
         'comments': 0,
         'likedBy': [],
+        'aiModerated': true, // Added by your friend
+        'moderationDate': FieldValue.serverTimestamp(), // Added by your friend
       });
 
       if (mounted) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Publication ajoutée avec succès !")),
-        );
+        _showSnackBar("✅ Publication ajoutée avec succès !");
       }
     } catch (e) {
       print("Error publishing: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erreur lors de la publication : $e")),
-      );
+      _showSnackBar("Erreur lors de la publication : $e");
     } finally {
       if (mounted) {
         setState(() {
@@ -86,6 +108,78 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
         });
       }
     }
+  }
+
+  void _showToxicContentDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber, color: Colors.orange, size: 24),
+              SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  'Contenu inapproprié détecté',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Notre système a détecté un langage inapproprié dans votre publication.',
+                style: TextStyle(fontSize: 16, height: 1.4),
+              ),
+              SizedBox(height: 12),
+              Text(
+                '🔍 Pour respecter la communauté, veuillez modifier votre texte.',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _textController.clear();
+                _showSnackBar("Texte effacé. Vous pouvez recommencer.");
+              },
+              child: const Text(
+                'Tout effacer',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _textController.selection = TextSelection.collapsed(
+                    offset: _textController.text.length);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Modifier mon texte'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Future<void> _pickImage() async {
@@ -111,6 +205,13 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
     }
   }
 
+  void _removeFile() {
+    setState(() {
+      _selectedFile = null;
+      _fileName = null;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -127,7 +228,9 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isPublishEnabled = _textController.text.isNotEmpty || _selectedFile != null;
+    final isPublishEnabled = (_textController.text.isNotEmpty || _selectedFile != null) &&
+        !_isLoading &&
+        !_isCheckingToxicity;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -149,26 +252,51 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
         ),
         centerTitle: true,
         actions: [
-          TextButton(
-            onPressed: isPublishEnabled && !_isLoading ? _publish : null,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF2590F4),
-              disabledForegroundColor: const Color(0xFF2590F4).withOpacity(0.4),
-            ),
-            child: _isLoading
-                ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
+          if (_isCheckingToxicity)
+            Container(
+              padding: const EdgeInsets.all(12.0),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade700),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Analyse...',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ],
+              ),
             )
-                : const Text(
-              'Publier',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+          else
+            TextButton(
+              onPressed: isPublishEnabled ? _publish : null,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF2590F4),
+                disabledForegroundColor: const Color(0xFF2590F4).withOpacity(0.4),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+                  : const Text(
+                'Publier',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -206,15 +334,40 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.only(right: 12, bottom: 8),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        '${_textController.text.length}/$_maxLength caractères',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // AI Protection Indicator (from friend)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.security, color: Colors.green.shade700, size: 12),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Protégé par IA',
+                                style: TextStyle(
+                                  color: Colors.green.shade700,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                        // Character counter (from your version)
+                        Text(
+                          '${_textController.text.length}/$_maxLength caractères',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -325,7 +478,7 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.check_circle, color: Colors.blue, size: 20),
+          const Icon(Icons.attach_file, color: Colors.blue, size: 16),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
@@ -339,12 +492,7 @@ class _CreatePublicationScreenState extends State<CreatePublicationScreen> {
           ),
           const SizedBox(width: 8),
           InkWell(
-            onTap: () {
-              setState(() {
-                _selectedFile = null;
-                _fileName = null;
-              });
-            },
+            onTap: _removeFile,
             child: const Icon(Icons.close, color: Colors.blue, size: 18),
           ),
         ],
