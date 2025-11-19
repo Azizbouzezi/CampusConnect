@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'email_verification_screen.dart';
 import 'login_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -76,63 +77,59 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      // Check if email already exists
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('email', isEqualTo: _emailController.text.trim())
-          .get();
+      // REMOVED: Don't check Firestore for email existence
+      // Firebase Auth will handle this automatically with better accuracy
 
-      if (querySnapshot.docs.isNotEmpty) {
-        _showMessage('Cet email est déjà utilisé', Colors.orange);
-        // Important: stop loading and exit if email exists
-        setState(() { _isLoading = false; });
-        return;
-      }
-
-      // Create user with Firebase Auth
+      // Create user with Firebase Auth - this will throw 'email-already-in-use' if exists
       final UserCredential userCredential =
       await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
-      // --- START OF THE FIX ---
-      // After creating the user, update their Auth profile with the name.
-      // This is the permanent fix for the "Utilisateur Anonyme" problem.
+      // --- CONTINUE WITH USER CREATION ---
       if (userCredential.user != null) {
+        // Update display name
         await userCredential.user!.updateDisplayName(_fullNameController.text.trim());
-        await userCredential.user!.reload(); // Reload user to get the updated info
+
+        // SEND EMAIL VERIFICATION
+        await userCredential.user!.sendEmailVerification();
+
+        await userCredential.user!.reload();
       }
 
-      // CREATE USER DOCUMENT IN FIRESTORE WITH THE CORRECT STRUCTURE
+      // CREATE USER DOCUMENT IN FIRESTORE
       await FirebaseFirestore.instance
           .collection('users')
           .doc(userCredential.user!.uid)
           .set({
         'email': _emailController.text.trim(),
-        'displayName': _fullNameController.text.trim(), // Use displayName instead of fullName
+        'displayName': _fullNameController.text.trim(),
         'photoURL': null,
         'bio': null,
         'major': null,
         'createdAt': FieldValue.serverTimestamp(),
-        // Keep your existing fields for backward compatibility
         'fullName': _fullNameController.text.trim(),
         'userId': userCredential.user!.uid,
         'userType': 'student',
+        'emailVerified': false,
       });
-      // --- END OF THE FIX ---
 
       // Success message
-      _showMessage('Compte créé avec succès! Bienvenue sur Campus Connect!', Colors.green);
+      _showMessage('Compte créé avec succès! Un email de vérification a été envoyé.', Colors.green);
 
       // Clear all input fields after successful signup
       _clearInputs();
 
-      // Navigate to home screen after successful signup
+      // Navigate to email verification screen
       Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) {
-          // You might want to navigate to your home screen here
-          // Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const EmailVerificationScreen(),
+            ),
+          );
         }
       });
 
@@ -145,6 +142,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         errorMessage = 'Cet email est déjà utilisé. Essayez de vous connecter.';
       } else if (e.code == 'invalid-email') {
         errorMessage = 'Email invalide. Veuillez vérifier votre adresse email.';
+      } else if (e.code == 'network-request-failed') {
+        errorMessage = 'Problème de connexion. Vérifiez votre internet.';
       }
 
       _showMessage(errorMessage, Colors.red);
@@ -155,7 +154,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         setState(() {
           _isLoading = false;
         });
-      }}
+      }
+    }
   }
 
   @override

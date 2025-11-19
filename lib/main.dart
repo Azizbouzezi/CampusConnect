@@ -1,3 +1,4 @@
+import 'package:cc/screens/home_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cc/screens/signup_screen.dart';
@@ -21,6 +22,9 @@ class CampusConnect extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
+      routes: {
+        '/home': (context) => const HomeScreen(),
+      },
       home: const SignUpScreen(),
       debugShowCheckedModeBanner: false,
     );
